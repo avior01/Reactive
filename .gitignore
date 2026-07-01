@@ -1,0 +1,22 @@
+# CMake build tree (generated artifacts — regenerated locally, not versioned)
+build/
+
+# Compiled binaries / objects
+*.o
+*.obj
+*.exe
+reactive
+
+# Generated IQ sample files
+*.sc16
+*.bin
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Editor / OS / tooling
+.vscode/
+.claude/
+.DS_Store
+Thumbs.db
