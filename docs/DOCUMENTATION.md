@@ -14,8 +14,8 @@ The project has two parts:
 
 | Part | Language | Role |
 |------|----------|------|
-| `reactive.cpp` | C++20 | The real-time engine that runs on the radio: RX capture, signal detection, and TX jamming. |
-| `PyFiles/` | Python | Offline tooling that *generates the binary IQ sample files* the C++ engine transmits (and helper analysis/plotting). |
+| `include/reactive/` + `src/main.cpp` | C++20 | The real-time engine that runs on the radio: RX capture, signal detection, and TX jamming. |
+| `python/` | Python | Offline tooling that *generates the binary IQ sample files* the C++ engine transmits (and helper analysis/plotting). |
 
 Hardware / library stack:
 
@@ -33,22 +33,33 @@ Hardware / library stack:
 
 ```
 Reactive/
-├── CMakeLists.txt            # Build configuration (UHD + IPP + Boost + Python/pybind11)
-├── reactive.cpp              # The entire C++ application (single translation unit)
-├── PyFiles/
-│   ├── jams.py               # Jamming-waveform generator + file I/O + plotting  ← RELEVANT
-│   └── J2S_file_creation.py  # Jam-to-Signal-ratio file sweep                     ← NOT relevant to current project
-└── build/                    # CMake out-of-source build tree (generated artifacts)
-    ├── CMakeCache.txt
-    ├── cmake_install.cmake
-    ├── compile_commands.json
-    ├── Makefile
-    └── CMakeFiles/
+├── CMakeLists.txt                  # Build configuration (UHD + IPP + Boost + Python/pybind11)
+├── README.md                       # Project overview, build & run
+├── include/
+│   └── reactive/                   # C++ engine, split by component (header-per-class; one translation unit)
+│       ├── Common.hpp              # Shared includes, macros, global sync state, sig_int_handler, Technique enum
+│       ├── USRPConfig.hpp          # class USRPconfig        — USRP device configuration
+│       ├── SignalGenerator.hpp     # class SignalGenerator   — in-C++ CW/noise waveform synthesis
+│       ├── SignalRecv.hpp          # template SignalRecv<T>  — RX capture + detection (WOLA → FFT → peaks)
+│       └── SignalTnsmt.hpp         # template SignalTnsmt<T> — TX jamming loop
+├── src/
+│   └── main.cpp                    # UHD_SAFE_MAIN entry point (CLI, device/stream setup, RX/TX threads)
+├── python/
+│   ├── jams/                       # Jamming-waveform generation package           ← RELEVANT
+│   │   ├── __init__.py             # re-exports files, plots, jam
+│   │   ├── io.py                   # class files   — sc16 / fc32 read & write
+│   │   ├── plotting.py             # class plots   — FFT / spectrogram / constellation
+│   │   ├── jamming.py              # class jam     — waveform synthesis (CW, FM, chirp, barrage, DTMF, PSK, …)
+│   │   └── __main__.py             # demo: `python -m jams` builds cw_FM.sc16
+│   └── j2s_sweep.py                # Jam-to-Signal-ratio file sweep                 ← NOT relevant to current project
+├── docs/
+│   └── DOCUMENTATION.md            # This document
+└── build/                          # CMake out-of-source build tree (generated artifacts, git-ignored)
 ```
 
 > **Note on the Python files (per project owner):**
-> `jams.py` is the relevant generator — it produces the binary IQ files that
-> `reactive.cpp` reads and transmits. `J2S_file_creation.py` builds a *Jam-to-Signal
+> `python/jams/` is the relevant generator — it produces the binary IQ files that
+> the engine reads and transmits. `python/j2s_sweep.py` builds a *Jam-to-Signal
 > ratio* sweep (mixing a jammer with a recorded signal at varying power ratios) and
 > **is not part of the current Reactive project** — it is legacy/experimental tooling.
 
@@ -100,7 +111,12 @@ The whole thing stops when `SIGINT` sets the atomic `stop_signal_called` (instal
 
 ---
 
-## 4. `reactive.cpp` in detail
+## 4. The C++ engine in detail
+
+The engine is one translation unit, split across `include/reactive/` by component and
+compiled from `src/main.cpp`. The sections below map directly to those files:
+§4.1–4.3 to `Common.hpp`, §4.4 to `USRPConfig.hpp`, §4.5 to `SignalGenerator.hpp`,
+§4.6 to `SignalRecv.hpp`, §4.7 to `SignalTnsmt.hpp`, and §4.8 to `src/main.cpp`.
 
 ### 4.1 Compile-time configuration (macros)
 
@@ -233,8 +249,9 @@ int16 I0, int16 Q0, int16 I1, int16 Q1, ...   (little-endian, no header)
 ```
 
 This matches UHD's `sc16` wire/CPU format and the `std::complex<short>` sample type.
-Full-scale is ±32767. `jams.py`'s `save_to_sc16` writes exactly this layout, and
-`SignalTnsmt::send_from_file` reads it back with `infile.read((char*)&jam_buff...)`.
+Full-scale is ±32767. The `jams` package's `files.save_to_sc16` writes exactly this
+layout, and `SignalTnsmt::send_from_file` reads it back with
+`infile.read((char*)&jam_buff...)`.
 
 ---
 
@@ -274,22 +291,23 @@ Full-scale is ±32767. `jams.py`'s `save_to_sc16` writes exactly this layout, an
 
 ---
 
-## 7. `PyFiles/jams.py` — the waveform generator (RELEVANT)
+## 7. `python/jams/` — the waveform generator (RELEVANT)
 
-Standalone Python module that creates the binary IQ files transmitted by
-`reactive.cpp`, plus analysis/plotting helpers. Three classes:
+A Python package that creates the binary IQ files transmitted by the engine, plus
+analysis/plotting helpers. Three classes, one module each (re-exported from the
+package root, so `jams.files` / `jams.plots` / `jams.jam` all work):
 
-### `class files(read_files_dir, write_files_dir)` — file I/O
+### `class files(read_files_dir, write_files_dir)` — file I/O (`io.py`)
 - `read_from_sc16(filename)` — read interleaved int16 IQ, normalize to unit-scale
   `complex128`.
 - `save_to_sc16(signal, filename)` — write `complex` signal as interleaved little-endian
-  int16 IQ (`×32767`). **This is the format `reactive.cpp` transmits.**
+  int16 IQ (`×32767`). **This is the format the engine transmits.**
 - `save_to_fc32(signal, filename)` — write as interleaved float32 (`.bin`).
 
-### `class plots(fs)` — visualization
+### `class plots(fs)` — visualization (`plotting.py`)
 - `show_fft`, `show_spectrogram`, `show_constellation` — matplotlib diagnostics.
 
-### `class jam(fs, jam_duration)` — waveform synthesis
+### `class jam(fs, jam_duration)` — waveform synthesis (`jamming.py`)
 Static/utility helpers:
 - `normalize_signal`, `calc_PAPR`, `adjust_signal_power`, `calc_Backoff`,
   `adjust_length`, `low_pass_filter`, `create_gaussian_noise`,
@@ -308,26 +326,26 @@ Waveform generators (each optionally multiplied by band-limited Gaussian noise):
 | `create_DTMF(tone_dur, char_list)` | DTMF dual-tone sequence. |
 | `create_BPSK(bits)` / `create_QPSK(bits)` | PSK-modulated waveforms. |
 
-**`__main__` (as configured):** `fs = 50e6`, `dur = 0.5 s`, output dir
-`/home/user/Projects/files_for_phi/tst`. It builds a single CW tone at baseband 0
+**`python -m jams` (the package `__main__`, as configured):** `fs = 50e6`, `dur = 0.5 s`,
+output dir `/home/user/Projects/files_for_phi/tst`. It builds a single CW tone at baseband 0
 (`create_multi_cw([0], 6.25e3)`), an FM waveform (`create_FM(0, 6.25e3, f_m=2e3)`),
 multiplies them, and saves the CW-times-FM result as **`cw_FM.sc16`** — which is exactly
-the file `reactive.cpp` transmits by default. It then plots the FFT and spectrogram.
+the file the engine transmits by default. It then plots the FFT and spectrogram.
 
-> To generate a different jamming file, edit the `__main__` block: pick a generator,
-> assign it to `signal`, and call `filer.save_to_sc16(signal, "yourname")`, then point
-> `reactive.cpp`'s `file` at it.
+> To generate a different jamming file, edit the `__main__` block (`python/jams/__main__.py`):
+> pick a generator, assign it to `signal`, and call `filer.save_to_sc16(signal, "yourname")`,
+> then point the engine's `file` (in `src/main.cpp`) at it.
 
 ---
 
-## 8. `PyFiles/J2S_file_creation.py` — Jam-to-Signal sweep (NOT part of current project)
+## 8. `python/j2s_sweep.py` — Jam-to-Signal sweep (NOT part of current project)
 
 Legacy/experimental script. It reads a recorded signal (`rate_15.36e6_freq_144e6.sc16`),
 generates a CW jammer, and produces a sweep of files `J2S-10 … J2S10` that mix jammer +
 recording at Jam-to-Signal ratios from −10 dB to +10 dB (lowering the jammer power for
 negative ratios, lowering the recording power for positive ones). Useful for evaluating
 detector/jammer performance vs. J2S, but **not used by the current Reactive pipeline.**
-It depends on `jams.py` (`import jams`).
+It depends on the `jams` package (`import jams`).
 
 ---
 
@@ -347,7 +365,8 @@ mkdir -p build && cd build
 cmake ..
 make            # produces the `reactive` executable
 ```
-`CMakeLists.txt` builds the `reactive` target from `reactive.cpp`, links `ipps` and
+`CMakeLists.txt` builds the `reactive` target from `src/main.cpp` (with `include/` on the
+include path), links `ipps` and
 `ippcore`, plus UHD and Boost. (The static-linking branch still references an old
 `rx_to_file` target and would need fixing if `UHD_USE_STATIC_LIBS` is turned on.)
 
@@ -372,7 +391,7 @@ Remember that `rate`, `freq`, and `file` are currently hard-coded overrides in
 - **`tx_from_file`:** defaults to `true`. Set to `false` (or wire it to a CLI flag) to
   use the in-C++ `SignalGenerator::create_cw` synthesis path instead of a file.
 - **Only `Technique::CW` is implemented** for runtime synthesis; `Multi`/`Chirp` are
-  stubs. The full waveform variety lives in `jams.py` (file-based path).
+  stubs. The full waveform variety lives in the `jams` package (file-based path).
 - **Linux-only includes:** `boost/filesystem`, `boost/process`, `boost/random` are behind
   `#ifdef __linux__`. The runtime target is Linux; the paths (`/home/user/...`, IPP at
   `/opt/intel/...`) confirm this, even though this repo copy sits on Windows.
