@@ -5,7 +5,7 @@ build/
 *.o
 *.obj
 *.exe
-reactive
+/reactive
 
 # Generated IQ sample files
 *.sc16

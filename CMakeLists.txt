@@ -63,6 +63,7 @@ endif()
 
 # need these include and link directories for the build
 include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${Boost_INCLUDE_DIRS}
     ${UHD_INCLUDE_DIRS}
     ${IPP_INCLUDE_DIR})
@@ -71,7 +72,7 @@ link_directories(${IPP_LIB_DIR})
 
 
 ### Make the executable #######################################################
-add_executable(reactive reactive.cpp)
+add_executable(reactive src/main.cpp)
 
 
 set(Boost_USE_STATIC_LIBS   ON)
