@@ -1,100 +1,14 @@
 import os
-import warnings 
+
 import numpy as np
 #import sounddevice as sd
 import scipy.signal as sc
 from scipy.signal import resample_poly
 from scipy.signal import firwin, lfilter
 from scipy.io import wavfile
-import matplotlib.pyplot as plt
-import matplotlib as mpl
 
 WAV_DIR_NAME = r"/home/user/" 
 
-warnings.filterwarnings("ignore")
-mpl.rcParams['agg.path.chunksize'] = 10000  # Prevent Agg OverflowError
-mpl.rcParams['path.simplify'] = True        # Enable path simplification
-mpl.rcParams['path.simplify_threshold'] = 0.1  # Default is 0.111..., adjust if needed
-
-class files:
-    def __init__(self, read_files_dir, write_files_dir):
-        self.read_files_dir = read_files_dir
-        self.write_files_dir = write_files_dir
-
-    def read_from_sc16(self, filename = "signal"):
-        if not filename.endswith('.sc16'):
-            filename += ".sc16"
-
-        file_path = os.path.join(self.read_files_dir, filename)
-        with open(file_path, 'rb') as f:
-            data = f.read()
-        
-        signal = np.frombuffer(data, dtype = np.int16)
-        sig_real = signal[0::2]
-        sig_imag = signal[1::2]
-        signal = sig_real + 1j * sig_imag
-        signal = (signal/32767).astype(np.complex128)
-        return signal
-
-    def save_to_sc16(self, signal, filename):
-        if not filename.endswith('.sc16'):
-            filename += ".sc16"
-
-        file_path = os.path.join(self.write_files_dir, filename)
-        sig_real = np.real(signal) * 32767
-        sig_imag = np.imag(signal) * 32767
-        sig_real = sig_real.astype(np.int16)
-        sig_imag = sig_imag.astype(np.int16)
-        data = np.empty(2 * len(signal), np.int16)
-        data[0::2] = sig_real 
-        data[1::2] = sig_imag
-        data.astype('<i2').tofile(file_path)
-
-    def save_to_fc32(self, signal, filename):
-        if not filename.endswith('.bin'):
-            filename += ".bin"
-
-        file_path = os.path.join(self.write_files_dir, filename)
-        sig_real = np.real(signal)
-        sig_real = sig_real.astype(np.float32)
-        sig_imag = np.imag(signal)
-        sig_imag = sig_imag.astype(np.float32)
-        data = np.empty(2 * len(signal), np.float32)
-        data[0::2] = sig_real
-        data[1::2] = sig_imag
-        data.tofile(file_path)
-
-class plots:
-    def __init__(self, fs):
-        self.fs = fs
-
-    def show_fft(self, signal, label = 'Signal'):
-        # Create an FFT plot of a given signal
-        fft = 20 * np.log10(np.abs(np.fft.fftshift(np.fft.fft(signal))) + 1e-12)
-        f = np.fft.fftshift(np.fft.fftfreq(len(fft), 1/self.fs))
-        plt.figure()
-        plt.plot(f/1e6, fft)
-        plt.xlabel("f [MHz]")
-        plt.ylabel("FFT")
-        plt.title(f"FFT of {label}")
-
-    def show_spectrogram(self, signal, label = 'Signal'):
-        # Create a spectrogram plot of a given signal
-        plt.figure()
-        plt.specgram(signal, NFFT = 1024, Fs=self.fs, cmap='viridis', scale='dB')
-        plt.xlabel('t [s]')
-        plt.ylabel('f [Hz]')
-        plt.title(f"Spectrogram of {label}") 
-    
-    def show_constellation(self, signal, order, samps_per_sym, label = 'Signal'):
-        signal = signal[::samps_per_sym]
-        plt.figure()
-        plt.plot(np.real(signal), np.imag(signal), 'o')
-        plt.xlabel('I (real)')
-        plt.ylabel('Q (imag)')
-        plt.ylim(-1, 1)
-        plt.xlim(-1, 1)
-        plt.title(f"Constellation diagram of {label}")
 
 class jam:
     def __init__(self, fs, jam_duration):
@@ -466,26 +380,3 @@ class jam:
         QPSK = np.exp(1j * (2 * np.pi * f * t + phases))
         QPSK = self.adjust_length(QPSK)
         return QPSK
-
-if __name__ == "__main__":  
-    fs = 50e6
-    spb = 8192
-    dur = 0.5 # 2 * 10e3 * spb/fs # 1.5 #sec
-    dir = r"/home/user/Projects/files_for_phi/tst"
-    jammer = jam(fs, dur)
-    plotter = plots(fs)
-    filer = files(None, dir)
-
-    noise_bw = 6.25e3
-    cw_list = [0]
-    cw = jammer.create_multi_cw(cw_list, noise_bw)
-    fc = 0
-    k = 6.25e3
-    fm = jammer.create_FM(fc, k, f_m=2e3)
-    signal = cw * fm
-    filer.save_to_sc16(cw, "cw_FM")
-    #filer.save_to_fc32(cw, "cw")
-    plotter.show_fft(signal)
-    plotter.show_spectrogram(signal)
-    plt.show()
-
