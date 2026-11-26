@@ -11,8 +11,8 @@ class SignalRecv
                    max_rx_channels(max_rx_channels),
                    fs(rate),
                    sigSize(spb),
-                   fftSize(spb / WOLA_ORDER),
-                   FFTOrder(static_cast<int>(log2(spb / WOLA_ORDER)))  
+                   fftSize(spb / cfg::kWolaOrder),
+                   FFTOrder(static_cast<int>(log2(spb / cfg::kWolaOrder)))  
         {}
 
         ~SignalRecv()
@@ -269,8 +269,8 @@ class SignalRecv
                         ipp32fc_signal[ch][s].im = static_cast<float>(imagPart);  
                     }
                     
-                    ipp32fc_signal[ch][s].re /= 32767.0;
-                    ipp32fc_signal[ch][s].im /= 32767.0;
+                    ipp32fc_signal[ch][s].re /= cfg::kFullScale;
+                    ipp32fc_signal[ch][s].im /= cfg::kFullScale;
                 }
             }
         }
@@ -329,7 +329,7 @@ class SignalRecv
             }
             
             // Perform WOLA
-            Ipp32fc pWolaDst[sigSize/WOLA_ORDER];
+            Ipp32fc pWolaDst[sigSize/cfg::kWolaOrder];
             for (size_t ch = 0; ch < samps.size(); ch++)
             {
                 // Multiply by Hamming window
@@ -337,16 +337,16 @@ class SignalRecv
                 ippsWinHamming_32fc(samps[ch].data(), pWinDst, curr_sigSize);
 
                 size_t wolaIdx = 0;
-                for (size_t col = 0; col < curr_sigSize; col += WOLA_ORDER)
+                for (size_t col = 0; col < curr_sigSize; col += cfg::kWolaOrder)
                 {
                     Ipp32fc tmp = {0, 0};  // CHANGED: Local variable instead of member
-                    for (size_t w = col; w < col + WOLA_ORDER; w++)
+                    for (size_t w = col; w < col + cfg::kWolaOrder; w++)
                     {
                         tmp.re += pWinDst[w].re;
                         tmp.im += pWinDst[w].im;
                     }
-                    tmp.re /= WOLA_ORDER;
-                    tmp.im /= WOLA_ORDER;
+                    tmp.re /= cfg::kWolaOrder;
+                    tmp.im /= cfg::kWolaOrder;
 
                     pWolaDst[wolaIdx] = tmp;
                     wolaIdx++;   
@@ -386,10 +386,10 @@ class SignalRecv
                     if (amp < amp_th)
                         break;
 
-                    if(amp > max_amp - 3) 
+                    if(amp > max_amp - cfg::kPeakWindowDb) 
                     {
                         Ipp32s current = pSortIndx[i] < fftSize/2 ? pSortIndx[i] : pSortIndx[i] - fftSize;  
-                        double freq = fs / WOLA_ORDER * current / fftSize;  
+                        double freq = fs / cfg::kWolaOrder * current / fftSize;  
 
                         bool is_append = true;  
                         for (size_t findex = 0; findex < freqs.size(); findex++)
@@ -438,7 +438,7 @@ class SignalRecv
         int flag = IPP_FFT_NODIV_BY_ANY;
 
         double max_amp = 0;
-        double amp_th = -15;
+        double amp_th = cfg::kAmpThreshDb;
 
-        double min_bw = 6.25e3;
+        double min_bw = cfg::kMinBwHz;
 };

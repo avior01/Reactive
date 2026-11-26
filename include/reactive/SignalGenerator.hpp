@@ -31,7 +31,7 @@ class SignalGenerator
                 bool skip = false;
                 for (int j = 0; j < i; j++) 
                 { 
-                    if (std::abs(freqs[i] - freqs[j]) <= 6.25e3)
+                    if (std::abs(freqs[i] - freqs[j]) <= cfg::kToneSpacingHz)
                     { 
                         skip = true; 
                         break; 
@@ -54,7 +54,7 @@ class SignalGenerator
             }
 
             // ADD NOISE 
-            if (NOISE_BW > 0)
+            if (cfg::kNoiseBwHz > 0)
             {
                 auto noise = create_gaussian_noise(N);
                 for (int n = 0; n < N; n++)
@@ -92,7 +92,7 @@ class SignalGenerator
         )
         {
             std::vector<std::complex<short>> output(signal.size());
-            const double scale = 32767.0;
+            const double scale = cfg::kFullScale;
 
             for (size_t i = 0; i < signal.size(); i++)
             {
@@ -108,7 +108,7 @@ class SignalGenerator
         {
             Ipp64fc* noise = ippsMalloc_64fc(num_samps);
 
-            std::mt19937 gen(42);
+            std::mt19937 gen(cfg::kNoiseSeed);
             std::normal_distribution<double> dist(0.0, 1.0);
 
             for (size_t n = 0; n < num_samps; n++)            
@@ -149,11 +149,11 @@ class SignalGenerator
 
         std::vector<std::complex<double>> apply_lpf(Ipp64fc* noise, const size_t num_samps)
         {
-            const int filter_order = 3;
-            double rFreq = NOISE_BW / usrp->get_tx_rate(tx_channels[0]);
+            const int filter_order = cfg::kNoiseFilterOrder;
+            double rFreq = cfg::kNoiseBwHz / usrp->get_tx_rate(tx_channels[0]);
             Ipp64f taps[2 * (filter_order + 1)];
 
-            std::cout << "Filter: Noise BW = " << NOISE_BW/1e6 << " MHz," 
+            std::cout << "Filter: Noise BW = " << cfg::kNoiseBwHz/1e6 << " MHz," 
                       << "rFreq = " << rFreq << std::endl;
 
             int bufferSize;

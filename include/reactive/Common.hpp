@@ -1,5 +1,7 @@
 #pragma once
 
+#include "reactive/Config.hpp"
+
 #include <uhd/convert.hpp>
 #include <uhd/exception.hpp>
 #include <uhd/types/tune_request.hpp>
@@ -36,10 +38,6 @@
 #include <cmath>
 
 #include <random>
-
-#define WOLA_ORDER 4
-#define JAM_DUR 10
-#define NOISE_BW 100e3
 
 using namespace std::chrono_literals;
 

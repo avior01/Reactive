@@ -68,7 +68,7 @@ class SignalTnsmt
                             size_t sample_idx = 0;
                             
                             size_t samples_sent = 0;
-                            const size_t total_samps = static_cast<size_t>(tx_rate * JAM_DUR);
+                            const size_t total_samps = static_cast<size_t>(tx_rate * cfg::kJamDurSec);
                             while (samples_sent < total_samps)
                             {
                                 size_t samples_remaining = total_samps - samples_sent;
@@ -90,7 +90,7 @@ class SignalTnsmt
 
                             /*
                             size_t samples_sent = 0;
-                            const size_t total_samps = static_cast<size_t>(tx_rate * JAM_DUR);
+                            const size_t total_samps = static_cast<size_t>(tx_rate * cfg::kJamDurSec);
 
                             while (!infile.eof() || samples_sent < total_samps)
                             {
@@ -171,7 +171,7 @@ class SignalTnsmt
                 { 
                     std::vector<std::complex<short>> signal = applyJamming(Technique::CW);
                     
-                    const size_t total_samps = static_cast<size_t>(tx_rate * JAM_DUR);
+                    const size_t total_samps = static_cast<size_t>(tx_rate * cfg::kJamDurSec);
                     size_t samples_sent = 0;
 
                     uhd::tx_metadata_t md;
