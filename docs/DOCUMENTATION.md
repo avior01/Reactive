@@ -37,7 +37,8 @@ Reactive/
 ├── README.md                       # Project overview, build & run
 ├── include/
 │   └── reactive/                   # C++ engine, split by component (header-per-class; one translation unit)
-│       ├── Common.hpp              # Shared includes, macros, global sync state, sig_int_handler, Technique enum
+│       ├── Config.hpp              # cfg:: constexpr tunables (DSP constants + CLI defaults)
+│       ├── Common.hpp              # Shared includes, global sync state, sig_int_handler, Technique enum
 │       ├── USRPConfig.hpp          # class USRPconfig        — USRP device configuration
 │       ├── SignalGenerator.hpp     # class SignalGenerator   — in-C++ CW/noise waveform synthesis
 │       ├── SignalRecv.hpp          # template SignalRecv<T>  — RX capture + detection (WOLA → FFT → peaks)
@@ -118,13 +119,21 @@ compiled from `src/main.cpp`. The sections below map directly to those files:
 §4.1–4.3 to `Common.hpp`, §4.4 to `USRPConfig.hpp`, §4.5 to `SignalGenerator.hpp`,
 §4.6 to `SignalRecv.hpp`, §4.7 to `SignalTnsmt.hpp`, and §4.8 to `src/main.cpp`.
 
-### 4.1 Compile-time configuration (macros)
+### 4.1 Compile-time configuration (`include/reactive/Config.hpp`)
 
-| Macro | Value | Meaning |
-|-------|-------|---------|
-| `WOLA_ORDER` | `4` | Weighted-overlap-add decimation factor. The FFT runs on `spb / WOLA_ORDER` points, trading frequency resolution for a cleaner, decimated spectrum and lower FFT cost. |
-| `JAM_DUR` | `10` | Duration, in seconds, to transmit the jam per detected frequency. |
-| `NOISE_BW` | `100e3` | Bandwidth (Hz) of the Gaussian noise multiplied onto the CW jam (used by the on-the-fly `create_cw` path). |
+Tunable constants are centralized in `include/reactive/Config.hpp` as `constexpr`
+values in namespace `cfg` — the WOLA/FFT and jam-duration parameters below, plus the
+detection thresholds (`kAmpThreshDb`, `kMinBwHz`, `kPeakWindowDb`), the sc16 full-scale
+(`kFullScale`), the noise-synthesis parameters, and the `--rate` / `--freq` / `--gain` /
+`--file` CLI defaults. The main ones:
+
+| Constant (`cfg::`) | Value | Meaning |
+|--------------------|-------|---------|
+| `kWolaOrder` | `4` | Weighted-overlap-add decimation factor. The FFT runs on `spb / kWolaOrder` points, trading frequency resolution for a cleaner, decimated spectrum and lower FFT cost. |
+| `kJamDurSec` | `10` | Duration, in seconds, to transmit the jam per detected frequency. |
+| `kNoiseBwHz` | `100e3` | Bandwidth (Hz) of the Gaussian noise multiplied onto the CW jam (used by the on-the-fly `create_cw` path). |
+
+The deeper sections below refer to these by their descriptive names.
 
 ### 4.2 Global synchronization state
 
@@ -219,13 +228,11 @@ The transmitter. Owns a `SignalGenerator` (`SigGen`) and a `USRPconfig` (`usrpCo
 ### 4.8 `UHD_SAFE_MAIN` — entry point
 
 1. **CLI parsing** via Boost `program_options` (see §6 for the full option list).
-2. **Hard-coded overrides** (these currently override several CLI values):
-   - `file = "/home/user/Projects/files_for_phi/tst/cw_FM.sc16"`
-   - `rate = 50e6`
-   - `freq = 140e6`
-   - `repeat = true`
+2. **Defaults** — `--rate`, `--freq`, `--gain`, and `--file` take their defaults from the
+   `cfg::` constants in `Config.hpp` (`50e6` / `140e6` / `0 dB` / `cw_FM.sc16`) and are
+   honored when passed on the command line. (`repeat` is still forced `true` in code.)
 3. Create USRP, parse RX/TX channels, set clock/subdev if given.
-4. Configure rate, frequency, gain (default 10 dB if `--gain` absent), optional bw/antenna.
+4. Configure rate, frequency, gain (default `0 dB`), optional bw/antenna.
 5. Lock LOs (unless `--skip-lo`); optionally check `mimo_locked` / `ref_locked`.
 6. Map `--type` → CPU format (`fc64`/`fc32`/`sc16`) and build RX + TX streamers.
 7. **Spawn RX thread(s)**: one shared thread over all channels by default, or one thread
@@ -264,10 +271,10 @@ layout, and `SignalTnsmt::send_from_file` reads it back with
 | `--type` | `short` | Sample type: `double`, `float`, or `short`. |
 | `--nsamps` | `0` | Total samples to receive (`0` = run until Ctrl+C). |
 | `--spb` | `8192` | Samples per buffer (also the FFT/WOLA block size). |
-| `--rate` | `50e6` | Sample rate (Hz). **Currently overridden to `50e6` in code.** |
-| `--freq` | `146e6` | RF center frequency (Hz). **Currently overridden to `140e6` in code.** |
+| `--rate` | `50e6` | Sample rate (Hz). Default from `cfg::kDefaultRateHz`. |
+| `--freq` | `140e6` | RF center frequency (Hz). Default from `cfg::kDefaultFreqHz`. |
 | `--lo-offset` | `0.0` | LO offset (Hz). |
-| `--gain` | `0.0` | RF chain gain (dB); defaults to 10 if unset. |
+| `--gain` | `0.0` | RF chain gain (dB). Default from `cfg::kDefaultGainDb`. |
 | `--ant` | — | Antenna selection. |
 | `--subdev` | — | Subdevice spec. |
 | `--rx_channels` | `0` | RX channel(s), e.g. `"0"`, `"0,1"`. |
@@ -284,7 +291,7 @@ layout, and `SignalTnsmt::send_from_file` reads it back with
 | `--skip-lo` | — | Skip LO-lock checking. |
 | `--int-n` | — | Use integer-N tuning. |
 | `--delay` | `0.0` | Delay between repeated transmissions (s). |
-| `--file` | `home/user/Projects/files_for_phi/tst/cw.sc16` | IQ file to transmit. **Currently overridden in code to `.../cw_FM.sc16`.** |
+| `--file` | `cw_FM.sc16` | IQ file to transmit. Default from `cfg::kDefaultFile`. |
 | `--multi_streamer` | — | One RX streamer/thread per channel. |
 | `--repeat` | — | Repeat (forced `true` in code). |
 | `--channel` | — | (Declared, unused.) |
@@ -376,15 +383,15 @@ include path), links `ipps` and
            --gain 10 --file /path/to/jam.sc16
 # Press Ctrl+C to stop.
 ```
-Remember that `rate`, `freq`, and `file` are currently hard-coded overrides in
-`UHD_SAFE_MAIN`, so CLI values for those are ignored until those lines are removed.
+With no flags, `rate`, `freq`, `gain`, and `file` take their defaults from `Config.hpp`
+(`50e6` / `140e6` / `0 dB` / `cw_FM.sc16`); pass the flags to override them.
 
 ---
 
 ## 10. Notes, caveats & gotchas
 
-- **Hard-coded overrides in `main`:** `file`, `rate`, and `freq` are reassigned after
-  option parsing, so the corresponding CLI flags currently have no effect.
+- **CLI defaults:** `rate`, `freq`, `gain`, and `file` default to the `cfg::` constants
+  in `Config.hpp` and are honored when passed as flags. (`repeat` is still forced `true`.)
 - **Global `freqs`:** shared mutable state between RX and TX. The RX↔TX handshake
   (`signal_received` + the two CVs) is what keeps access serialized; there is no
   additional lock around `freqs` itself.
@@ -396,5 +403,6 @@ Remember that `rate`, `freq`, and `file` are currently hard-coded overrides in
   `#ifdef __linux__`. The runtime target is Linux; the paths (`/home/user/...`, IPP at
   `/opt/intel/...`) confirm this, even though this repo copy sits on Windows.
 - **`--channel` CLI option** is declared but unused.
-- **Detector tuning constants** (`amp_th = -15 dB`, `min_bw = 6.25 kHz`, 3 dB peak
-  window, `WOLA_ORDER = 4`) live inside `SignalRecv` and govern sensitivity/selectivity.
+- **Detector tuning constants** (`cfg::kAmpThreshDb = -15 dB`, `kMinBwHz = 6.25 kHz`,
+  `kPeakWindowDb = 3 dB`, `kWolaOrder = 4`) live in `Config.hpp` and govern
+  sensitivity/selectivity.

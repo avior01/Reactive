@@ -25,11 +25,11 @@ int UHD_SAFE_MAIN(int argc, char* argv[])
         ("type", po::value<std::string>(&type)->default_value("short"), "sample type: double, float, or short")
         ("nsamps", po::value<size_t>(&total_num_samps)->default_value(0), "total number of samples to receive")
         ("spb", po::value<size_t>(&spb)->default_value(8192), "samples per buffer")
-        ("rate", po::value<double>(&rate)->default_value(50e6), "rate of incoming samples")
-        ("freq", po::value<double>(&freq)->default_value(146e6), "RF center frequency in Hz")
+        ("rate", po::value<double>(&rate)->default_value(cfg::kDefaultRateHz), "rate of incoming samples")
+        ("freq", po::value<double>(&freq)->default_value(cfg::kDefaultFreqHz), "RF center frequency in Hz")
         ("lo-offset", po::value<double>(&lo_offset)->default_value(0.0),
             "Offset for frontend LO in Hz (optional)")
-        ("gain", po::value<double>(&gain)->default_value(0.0), "gain for the RF chain")
+        ("gain", po::value<double>(&gain)->default_value(cfg::kDefaultGainDb), "gain for the RF chain")
         ("ant", po::value<std::string>(&ant), "antenna selection")
         ("subdev", po::value<std::string>(&subdev), "subdevice specification")
         ("rx_channels", po::value<std::string>(&rx_channels)->default_value("0"), "which channel(s) to use for RX (specify \"0\", \"1\", \"0,1\", etc)")
@@ -46,7 +46,7 @@ int UHD_SAFE_MAIN(int argc, char* argv[])
         ("skip-lo", "skip checking LO lock status")
         ("int-n", "tune USRP with integer-N tuning")
         ("delay", po::value<double>(&delay)->default_value(0.0), "specify a delay between repeated transmission of file (in seconds)")
-        ("file", po::value<std::string>(&file)->default_value("home/user/Projects/files_for_phi/tst/cw.sc16"), "name of the file to read binary samples from")
+        ("file", po::value<std::string>(&file)->default_value(std::string(cfg::kDefaultFile)), "name of the file to read binary samples from")
         ("multi_streamer", "Create a separate streamer per channel.")
         ("repeat", "Repeats.")
         ("channel", "channel.")
@@ -71,7 +71,6 @@ int UHD_SAFE_MAIN(int argc, char* argv[])
         tx_from_file = true;
     }
     */
-    file = "/home/user/Projects/files_for_phi/tst/cw_FM.sc16";
 
     bool bw_summary             = vm.count("progress") > 0;
     bool stats                  = vm.count("stats") > 0;
@@ -116,23 +115,16 @@ int UHD_SAFE_MAIN(int argc, char* argv[])
     }
 
     // Set the sample rate
-    /*if (!vm.count("rate"))*/ 
-    rate = 50e6;
     config.set_channel_rate(rate, true, rx_channel_list);
     config.set_channel_rate(rate, false, tx_channel_list);
 
     // Set the center frequency
-    /*if (!vm.count("freq"))*/
-    freq = 140e6;
     config.set_channel_freq(freq, lo_offset, true, vm.count("int-n"), rx_channel_list);
     config.set_channel_freq(freq, lo_offset, false, vm.count("int-n"), tx_channel_list);
 
-    // Set the channels gain
-    if (!vm.count("gain")) gain = 10;
-    if (vm.count("gain")) {
-        config.set_channel_gain(gain, true, rx_channel_list);
-        config.set_channel_gain(gain, false, tx_channel_list);
-    }
+    // Set the channels gain (defaults to cfg::kDefaultGainDb; --gain overrides)
+    config.set_channel_gain(gain, true, rx_channel_list);
+    config.set_channel_gain(gain, false, tx_channel_list);
 
      // Set the IF filter bandwidth
     if (vm.count("bw")) {
